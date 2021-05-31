@@ -1,0 +1,12 @@
+{
+    "dependencies": {
+        "discord.js": "github:discordjs/discord.js#b376f31af9881b9cd3f82ac4a42a468947cce482",
+        "node-fetch": "^2.6.1"
+    },
+    "devDependencies": {
+        "@types/node": "^14.17.0",
+        "@types/node-fetch": "^2.5.10",
+        "discord-api-types": "^0.18.1",
+        "mw-collegiate": "^1.0.1"
+    }
+}
