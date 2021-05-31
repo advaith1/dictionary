@@ -9,13 +9,13 @@ import { mwKey, discordToken } from './config.json'
 // override typings to access private method
 // @ts-expect-error
 class Client extends Discord.Client {
-    readonly api: {
-        interactions(id: string, token: string): {
-            callback: {
+	readonly api: {
+		interactions(id: string, token: string): {
+			callback: {
 				post: ({data}) => void
 			}
-        }
-    }
+		}
+	}
 }
 
 const client = new Client({ intents: [] })
