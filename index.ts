@@ -1,22 +1,9 @@
-import Discord from 'discord.js'
+import { Client, InteractionReplyOptions, MessageActionRowComponentOptions } from 'discord.js'
 import fetch from 'node-fetch'
 
 import type { Entry } from 'mw-collegiate'
-import type { APIInteractionApplicationCommandCallbackData } from 'discord-api-types'
 
 import { mwKey, discordToken } from './config.json'
-
-// override typings to access private method
-// @ts-expect-error
-class Client extends Discord.Client {
-	readonly api: {
-		interactions(id: string, token: string): {
-			callback: {
-				post: ({data}) => void
-			}
-		}
-	}
-}
 
 const client = new Client({ intents: [] })
 
@@ -60,85 +47,67 @@ const generateMessage = async (word: string, page: number) => {
 			}
 		}],
 		components: generateComponents(word, page, result)
-	} as APIInteractionApplicationCommandCallbackData
+	} as InteractionReplyOptions
 }
 
 /** Generate the message components to send (button and selects) */
 const generateComponents = (word: string, page: number, result: Entry[]) => [
-	{
-		type: 1,
-		// buttons
-		components: [
-			{
-				type: 2,
-				style: 1,
-				label: `1`,
-				custom_id: `${word}:0`,
-				disabled: page === 0
-			},
-			{
-				type: 2,
-				style: 1,
-				label: result[page - 1] ? `Previous (${page})` : 'Previous',
-				custom_id: `${word}:${page - 1}`,
-				disabled: !result[page - 1]
-			},
-			{
-				type: 2,
-				style: 1,
-				label: result[page + 1] ? `Next (${page + 2})` : 'Next',
-				custom_id: `${word}:${page + 1}`,
-				disabled: !result[page + 1]
-			},
-			{
-				type: 2,
-				style: 1,
-				label: result.length,
-				custom_id: `${word}:${result.length - 1}`,
-				disabled: page === result.length - 1
-			}
-		]
-	},
-	{
-		type: 1,
-		components: [
-			{
-				type: 3,
-				custom_id: 'select',
-				placeholder: 'Choose a definition',
-				options: result.map((d, i) => ({
-					label: trim(`${i + 1}. ${d.hwi.hw.replace(/\*/g, '')}${d.fl ? ` (${d.fl})` : ''}`, 25),
-					// definition, falls back to cross-reference
-					description: trim(d.shortdef.join(', ') || d.cxs && `${d.cxs[0].cxl} ${d.cxs[0].cxtis[0].cxt}`, 50),
-					value: `${word}:${i}`,
-					default: i === page
-				}))
-			}
-		]
-	}
-]
+	[
+		{
+			type: 'BUTTON',
+			style: 'PRIMARY',
+			label: 1,
+			customID: `${word}:0`,
+			disabled: page === 0
+		},
+		{
+			type: 'BUTTON',
+			style: 'PRIMARY',
+			label: result[page - 1] ? `Previous (${page})` : 'Previous',
+			customID: `${word}:${page - 1}`,
+			disabled: !result[page - 1]
+		},
+		{
+			type: 'BUTTON',
+			style: 'PRIMARY',
+			label: result[page + 1] ? `Next (${page + 2})` : 'Next',
+			customID: `${word}:${page + 1}`,
+			disabled: !result[page + 1]
+		},
+		{
+			type: 'BUTTON',
+			style: 'PRIMARY',
+			label: result.length,
+			customID: `${word}:${result.length - 1}`,
+			disabled: page === result.length - 1
+		}
+	],
+	[
+		{
+			type: 'SELECT_MENU',
+			customID: 'select',
+			placeholder: 'Choose a definition',
+			options: result.map((d, i) => ({
+				label: trim(`${i + 1}. ${d.hwi.hw.replace(/\*/g, '')}${d.fl ? ` (${d.fl})` : ''}`, 25),
+				// definition, falls back to cross-reference
+				description: trim(d.shortdef.join(', ') || d.cxs && `${d.cxs[0].cxl} ${d.cxs[0].cxtis[0].cxt}`, 50),
+				value: `${word}:${i}`,
+				default: i === page
+			}))
+		}
+	]
+] as MessageActionRowComponentOptions[][]
 
-// handle command uses
 client.on('interaction', async interaction => {
-	if (!interaction.isCommand()) return
+	if (interaction.isCommand())
+		interaction.reply(await generateMessage(interaction.options.get('term').value as string, 0))
 
-	client.api.interactions(interaction.id, interaction.token).callback.post({data: {
-		type: 4,
-		data: await generateMessage(interaction.options[0].value as string, 0)
-	}})
+	if (interaction.isMessageComponent()) {
+		const [word, page] = (interaction.isSelectMenu() ? interaction.values[0] : interaction.customID).split(':')
 
-})
+		interaction.update(await generateMessage(word, parseInt(page)))
+	}
 
-// handle component (button/select) uses
-client.ws.on('INTERACTION_CREATE', async interaction => {
-	if (interaction.type !== 3) return
-
-	const [word, page] = ((interaction.data.component_type === 3 ? interaction.data.values[0] : interaction.data.custom_id) as string).split(':')
-
-	await client.api.interactions(interaction.id, interaction.token).callback.post({data: {
-		type: 7,
-		data: await generateMessage(word, parseInt(page))
-	}})
 })
 
 client.login(discordToken)

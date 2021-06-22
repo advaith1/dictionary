@@ -1,6 +1,6 @@
 {
     "dependencies": {
-        "discord.js": "github:discordjs/discord.js#b376f31af9881b9cd3f82ac4a42a468947cce482",
+        "discord.js": "github:discordjs/discord.js#e9f30d99676ae057765af140ec08d05e475fd725",
         "node-fetch": "^2.6.1"
     },
     "devDependencies": {
