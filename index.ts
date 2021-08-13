@@ -57,28 +57,28 @@ const generateComponents = (word: string, page: number, result: Entry[]) => [
 			type: 'BUTTON',
 			style: 'PRIMARY',
 			label: 1,
-			customID: `${word}:0`,
+			customID: `${word}:0:first`,
 			disabled: page === 0
 		},
 		{
 			type: 'BUTTON',
 			style: 'PRIMARY',
 			label: result[page - 1] ? `Previous (${page})` : 'Previous',
-			customID: `${word}:${page - 1}`,
+			customID: `${word}:${page - 1}:prev`,
 			disabled: !result[page - 1]
 		},
 		{
 			type: 'BUTTON',
 			style: 'PRIMARY',
 			label: result[page + 1] ? `Next (${page + 2})` : 'Next',
-			customID: `${word}:${page + 1}`,
+			customID: `${word}:${page + 1}:next`,
 			disabled: !result[page + 1]
 		},
 		{
 			type: 'BUTTON',
 			style: 'PRIMARY',
 			label: result.length,
-			customID: `${word}:${result.length - 1}`,
+			customID: `${word}:${result.length - 1}:last`,
 			disabled: page === result.length - 1
 		}
 	],
