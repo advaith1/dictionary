@@ -134,7 +134,6 @@ client.ws.on('INTERACTION_CREATE', async interaction => {
 
 	} else {
 		if (!autocompleteCache[query]) {
-			console.log(`fetching autocomplete data for ${query}`)
 			const results = (await (await fetch(`https://www.merriam-webster.com/lapi/v1/mwol-search/autocomplete?search=${query}`)).json()).docs
 			autocompleteCache[query] = results.filter(r => r.ref === 'owl-combined').map(r => r.word).slice(0, 25)
 			// filters to dictionary (owl-combined) to remove thesaurus results
