@@ -110,4 +110,38 @@ client.on('interaction', async interaction => {
 
 })
 
+const autocompleteCache: {[word: string]: string[]} = {}
+
+// autocomplete
+client.ws.on('INTERACTION_CREATE', async interaction => {
+	if (interaction.type !== 4) return
+
+	// @ts-expect-error
+	const respond = choices => client.api.interactions(interaction.id, interaction.token).callback.post({data: {
+        type: 8,
+        data: { choices }
+    }})
+
+	const query = interaction.data.options[0].value as string
+
+	if (!query) {
+		const results = (await (await fetch('https://www.merriam-webster.com/lapi/v1/mwol-mp/get-lookups-data-homepage')).json()).data.words
+
+		respond([
+			{ name: 'Type your query, or select a current top Merriam-Webster lookup:', value: '' },
+			...results.slice(0, 24).map(r => ({ name: r, value: r }))
+		])
+
+	} else {
+		if (!autocompleteCache[query]) {
+			console.log(`fetching autocomplete data for ${query}`)
+			const results = (await (await fetch(`https://www.merriam-webster.com/lapi/v1/mwol-search/autocomplete?search=${query}`)).json()).docs
+			autocompleteCache[query] = results.filter(r => r.ref === 'owl-combined').map(r => r.word).slice(0, 25)
+			// filters to dictionary (owl-combined) to remove thesaurus results
+		}
+
+		respond(autocompleteCache[query].map(w => ({ name: w, value: w })))
+	}
+})
+
 client.login(discordToken)
