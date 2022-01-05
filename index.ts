@@ -1,5 +1,5 @@
-import { Client, InteractionReplyOptions, MessageActionRowComponentOptions } from 'discord.js'
-import fetch from 'node-fetch'
+import { Client, InteractionReplyOptions, MessageActionRowOptions } from 'discord.js'
+import { request } from 'undici'
 
 import type { Entry } from 'mw-collegiate'
 
@@ -15,13 +15,13 @@ client.on('ready', () => console.log(`started! ${client.user.tag}`))
 const trim = (text: string, max: number) => text.length > max ? text.substring(0, max - 1)+'…' : text
 
 const cache: {[word: string]: Entry[]} = {}
+const autocompleteCache: {[word: string]: string[]} = {}
 
 /** Get the dictionary result for a word (from cache if available) */
 const lookup = async (word: string) => {
 	if (cache[word]) return cache[word]
 
-	const r = await fetch(`https://dictionaryapi.com/api/v3/references/collegiate/json/${word}?key=${mwKey}`)
-	const result = await r.json() as Entry[]
+	const result = await (await request(`https://dictionaryapi.com/api/v3/references/collegiate/json/${word}?key=${mwKey}`)).body.json() as Entry[]
 
 	cache[word] = result
 
@@ -35,7 +35,7 @@ const generateMessage = async (word: string, page: number) => {
 	const entry = result[page]
 
 	if (!entry?.hwi) return { content: 'Not found' }
-	
+
 	return {
 		embeds: [{
 			title: `${entry.hwi.hw.replace(/\*/g, '·')}${entry.fl ? ` (${entry.fl})` : ''}`,
@@ -52,94 +52,92 @@ const generateMessage = async (word: string, page: number) => {
 
 /** Generate the message components to send (button and selects) */
 const generateComponents = (word: string, page: number, result: Entry[]) => [
-	[
-		{
-			type: 'BUTTON',
-			style: 'PRIMARY',
-			label: 1,
-			customID: `${word}:0:first`,
-			disabled: page === 0
-		},
-		{
-			type: 'BUTTON',
-			style: 'PRIMARY',
-			label: result[page - 1] ? `Previous (${page})` : 'Previous',
-			customID: `${word}:${page - 1}:prev`,
-			disabled: !result[page - 1]
-		},
-		{
-			type: 'BUTTON',
-			style: 'PRIMARY',
-			label: result[page + 1] ? `Next (${page + 2})` : 'Next',
-			customID: `${word}:${page + 1}:next`,
-			disabled: !result[page + 1]
-		},
-		{
-			type: 'BUTTON',
-			style: 'PRIMARY',
-			label: result.length,
-			customID: `${word}:${result.length - 1}:last`,
-			disabled: page === result.length - 1
-		}
-	],
-	[
-		{
-			type: 'SELECT_MENU',
-			customID: 'select',
-			placeholder: 'Choose a definition',
-			options: result.map((d, i) => ({
-				label: trim(`${i + 1}. ${d.hwi.hw.replace(/\*/g, '')}${d.fl ? ` (${d.fl})` : ''}`, 25),
-				// definition, falls back to cross-reference
-				description: trim(d.shortdef.join(', ') || d.cxs && `${d.cxs[0].cxl} ${d.cxs[0].cxtis[0].cxt}`, 50),
-				value: `${word}:${i}`,
-				default: i === page
-			}))
-		}
-	]
-] as MessageActionRowComponentOptions[][]
+	{
+		type: 'ACTION_ROW',
+		components: [
+			{
+				type: 'BUTTON',
+				style: 'PRIMARY',
+				label: 1,
+				customId: `${word}:0:first`,
+				disabled: page === 0
+			},
+			{
+				type: 'BUTTON',
+				style: 'PRIMARY',
+				label: result[page - 1] ? `Previous (${page})` : 'Previous',
+				customId: `${word}:${page - 1}:prev`,
+				disabled: !result[page - 1]
+			},
+			{
+				type: 'BUTTON',
+				style: 'PRIMARY',
+				label: result[page + 1] ? `Next (${page + 2})` : 'Next',
+				customId: `${word}:${page + 1}:next`,
+				disabled: !result[page + 1]
+			},
+			{
+				type: 'BUTTON',
+				style: 'PRIMARY',
+				label: result.length,
+				customId: `${word}:${result.length - 1}:last`,
+				disabled: page === result.length - 1
+			}
+		],
+	},
+	{
+		type: 'ACTION_ROW',
+		components: [
+			{
+				type: 'SELECT_MENU',
+				customId: 'select',
+				placeholder: 'Choose a definition',
+				options: result.map((d, i) => ({
+					label: trim(`${i + 1}. ${d.hwi.hw.replace(/\*/g, '')}${d.fl ? ` (${d.fl})` : ''}`, 100),
+					// definition, falls back to cross-reference
+					description: trim(d.shortdef.join(', ') || d.cxs && `${d.cxs[0].cxl} ${d.cxs[0].cxtis[0].cxt}`, 100),
+					value: `${word}:${i}`,
+					default: i === page
+				}))
+			}
+		]
+	}
+] as MessageActionRowOptions[]
 
-client.on('interaction', async interaction => {
-	if (interaction.isCommand())
-		interaction.reply(await generateMessage(interaction.options.get('term').value as string, 0))
+client.on('interactionCreate', async interaction => {
+	if (interaction.isCommand()) {
+		const query = interaction.options.getString('term')
+		if (!query) return interaction.reply({ content: "You didn't enter a term.", ephemeral: true })
+
+		interaction.reply(await generateMessage(interaction.options.getString('term'), 0))
+	}
 
 	if (interaction.isMessageComponent()) {
-		const [word, page] = (interaction.isSelectMenu() ? interaction.values[0] : interaction.customID).split(':')
+		const [word, page] = (interaction.isSelectMenu() ? interaction.values[0] : interaction.customId).split(':')
 
 		interaction.update(await generateMessage(word, parseInt(page)))
 	}
 
-})
+	if (interaction.isAutocomplete()) {
+		const query = interaction.options.getString('term')
 
-const autocompleteCache: {[word: string]: string[]} = {}
+		if (!query) {
+			const results = (await (await request('https://www.merriam-webster.com/lapi/v1/mwol-mp/get-lookups-data-homepage')).body.json()).data.words
 
-// autocomplete
-client.ws.on('INTERACTION_CREATE', async interaction => {
-	if (interaction.type !== 4) return
+			interaction.respond([
+				{ name: 'Type your query, or select a current top Merriam-Webster lookup:', value: '' },
+				...results.slice(0, 24).map(r => ({ name: r, value: r }))
+			])
 
-	// @ts-expect-error
-	const respond = choices => client.api.interactions(interaction.id, interaction.token).callback.post({data: {
-        type: 8,
-        data: { choices }
-    }})
+		} else {
+			if (!autocompleteCache[query]) {
+				const results = (await (await request(`https://www.merriam-webster.com/lapi/v1/mwol-search/autocomplete?search=${query}`)).body.json()).docs
+				autocompleteCache[query] = results.filter(r => r.ref === 'owl-combined').map(r => r.word).slice(0, 25)
+				// filters to dictionary (owl-combined) to remove thesaurus results
+			}
 
-	const query = interaction.data.options[0].value as string
-
-	if (!query) {
-		const results = (await (await fetch('https://www.merriam-webster.com/lapi/v1/mwol-mp/get-lookups-data-homepage')).json()).data.words
-
-		respond([
-			{ name: 'Type your query, or select a current top Merriam-Webster lookup:', value: '' },
-			...results.slice(0, 24).map(r => ({ name: r, value: r }))
-		])
-
-	} else {
-		if (!autocompleteCache[query]) {
-			const results = (await (await fetch(`https://www.merriam-webster.com/lapi/v1/mwol-search/autocomplete?search=${query}`)).json()).docs
-			autocompleteCache[query] = results.filter(r => r.ref === 'owl-combined').map(r => r.word).slice(0, 25)
-			// filters to dictionary (owl-combined) to remove thesaurus results
+			interaction.respond(autocompleteCache[query].map(w => ({ name: w, value: w })))
 		}
-
-		respond(autocompleteCache[query].map(w => ({ name: w, value: w })))
 	}
 })
 
